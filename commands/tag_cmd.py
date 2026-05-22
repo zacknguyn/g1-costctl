@@ -42,18 +42,25 @@ USEFUL COMBO
       --id $(./costctl.py list ec2 --missing-tag Application | awk 'NR==4{print $1}') \\
       --set Application=HealthBot
 """
+
 import boto3
+from botocore.client import ClientError
 
 from commands._common import parse_kv
 
 
 def _to_tags(set_args):
     """Convert ['k1=v1', 'k2=v2'] to [{'Key':'k1','Value':'v1'}, ...]."""
-    raise NotImplementedError("TODO: implement _to_tags using parse_kv")
+    tags = []
+    for s in set_args:
+        k, v = parse_kv(s)
+        tags.append({"Key": k, "Value": v})
+    return tags
 
 
 def _tag_ec2(rid, tags):
-    raise NotImplementedError("TODO: implement _tag_ec2 using create_tags")
+    ec2 = boto3.client("ec2")
+    ec2.create_tags(Resources=[rid], Tags=tags)
 
 
 def _tag_rds(rid, tags):
@@ -61,7 +68,19 @@ def _tag_rds(rid, tags):
 
 
 def _tag_s3(rid, tags):
-    raise NotImplementedError("TODO: implement _tag_s3 — MERGE with existing tags, don't replace")
+    s3 = boto3.client("s3")
+    try:
+        current = s3.get_bucket_tagging(Bucket=rid).get("TagSet", [])
+    except ClientError:
+        current = []
+
+    # Merge existing with new
+    merged = {t["Key"]: t["Value"] for t in current}
+    for t in tags:
+        merged[t["Key"]] = t["Value"]
+
+    tag_set = [{"Key": k, "Value": v} for k, v in merged.items()]
+    s3.put_bucket_tagging(Bucket=rid, Tagging={"TagSet": tag_set})
 
 
 def _tag_volume(rid, tags):
@@ -84,4 +103,10 @@ def run(args):
         args.id    — resource identifier
         args.set   — list[str], each "key=value"
     """
-    raise NotImplementedError("TODO: implement run() — see module docstring")
+    # args.set is a list from argparse
+    tags = _to_tags(args.set)
+    try:
+        DISPATCH[args.type](args.id, tags)
+        print(f"Applied {len(tags)} tag(s) to {args.type} {args.id}")
+    except ClientError as e:
+        print(f"AWS error: {e.response['Error']['Message']}")

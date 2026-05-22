@@ -39,14 +39,40 @@ VERIFY
 ------
     pytest tests/test_clean.py -v
 """
+
 import boto3
 
-from commands._common import parse_kv
+from commands._common import parse_kv, tags_to_dict
 
 
 def _find_targets(tag_key, tag_val):
     """Return {"ec2": [...], "volume": [...]} matching tag in non-terminal state."""
-    raise NotImplementedError("TODO: implement _find_targets — see test_clean.py")
+    ec2 = boto3.client("ec2")
+    targets = {"ec2": [], "volume": []}
+
+    # Find EC2
+    paginator = ec2.get_paginator("describe_instances")
+    for page in paginator.paginate():
+        for res in page["Reservations"]:
+            for inst in res["Instances"]:
+                # Don't target already dead ones
+                if inst["State"]["Name"] in ["terminated", "shutting-down"]:
+                    continue
+                tags = tags_to_dict(inst.get("Tags", []))
+                if tags.get(tag_key) == tag_val:
+                    targets["ec2"].append(inst["InstanceId"])
+
+    # Find Volumes
+    vol_paginator = ec2.get_paginator("describe_volumes")
+    for page in vol_paginator.paginate():
+        for vol in page["Volumes"]:
+            if vol["State"] == "deleted":
+                continue
+            tags = tags_to_dict(vol.get("Tags", []))
+            if tags.get(tag_key) == tag_val:
+                targets["volume"].append(vol["VolumeId"])
+
+        return targets
 
 
 def run(args):
@@ -56,4 +82,29 @@ def run(args):
         args.tag    — "key=value" string (REQUIRED)
         args.apply  — bool, must be True to actually delete (default False = dry-run)
     """
-    raise NotImplementedError("TODO: implement run() — see module docstring")
+    k, v = parse_kv(args.tag)
+    targets = _find_targets(k, v)
+    total = len(targets["ec2"]) + len(targets["volume"])
+
+    # 1. Handle "No matches" case
+    if total == 0:
+        print("Nothing to clean.")
+        return
+
+    print(f"Found {total} resources with {k}={v}")
+
+    # 2. Handle Dry-run
+    if not args.apply:
+        # Must include the word "dry-run"
+        print(f"This is a dry-run. Use --apply to actually delete.")
+        for res_type, ids in targets.items():
+            for rid in ids:
+                print(f"  Would terminate {res_type}: {rid}")
+        return
+
+    # 3. Apply deletion
+    from commands.terminate_cmd import _terminate_ec2
+
+    for rid in targets["ec2"]:
+        _terminate_ec2(rid, force=True)
+        print(f"Terminated ec2: {rid}")

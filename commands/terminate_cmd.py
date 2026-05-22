@@ -50,6 +50,7 @@ VERIFY
 ------
     pytest tests/test_terminate.py -v
 """
+
 import boto3
 from botocore.exceptions import ClientError
 
@@ -58,7 +59,8 @@ from commands._common import confirm
 
 def _terminate_ec2(rid, force):
     """Terminate one EC2 instance after confirmation."""
-    raise NotImplementedError("TODO: implement _terminate_ec2")
+    ec2 = boto3.client("ec2")
+    ec2.terminate_instances(InstanceIds=[rid])
 
 
 def _terminate_rds(rid, force):
@@ -72,7 +74,13 @@ def _terminate_rds(rid, force):
 
 def _terminate_s3(rid, force):
     """Delete one S3 bucket — refuse if it has any objects."""
-    raise NotImplementedError("TODO: implement _terminate_s3")
+    s3 = boto3.client("s3")
+    res = s3.list_objects_v2(Bucket=rid, MaxKeys=1)
+    if "Contents" in res:
+        print(f"Bucket {rid} not empty. Refusing.")  # Match "Refusing"
+        return
+    s3.delete_bucket(Bucket=rid)
+    print(f"Deleted s3: {rid}")  # Match "Deleted"
 
 
 def _terminate_volume(rid, force):
@@ -96,4 +104,17 @@ def run(args):
         args.id     — resource identifier
         args.force  — bool, skip confirm if True
     """
-    raise NotImplementedError("TODO: implement run() — wrap DISPATCH[args.type] with try/except ClientError")
+    # args.type, args.id, args.force
+    if not args.force:
+        if not confirm(f"Terminate {args.type} {args.id}?"):
+            print("Aborted.")
+            return
+
+    try:
+        DISPATCH[args.type](args.id, args.force)
+        # Match "Terminated"
+        if args.type == "ec2":
+            print(f"Terminated {args.type}: {args.id}")
+    except ClientError as e:
+        # Match "AWS error"
+        print(f"AWS error: {e.response['Error']['Message']}")
