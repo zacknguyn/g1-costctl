@@ -32,7 +32,7 @@ You're done when all 25 pass.
 
 ```bash
 # 1. Fork / clone
-git clone <your-fork-url> g<N>-costctl && cd g<N>-costctl
+git clone https://github.com/zacknguyn/g1-costctl && cd g1-costctl
 
 # 2. Install
 make install-dev                   # or: pip install -r requirements-dev.txt
@@ -283,11 +283,8 @@ Add a `REFLECTIONS.md` to your repo. Sample prompts:
 - [ ] Replace `g<N>` placeholders throughout README with your real group number
 - [ ] Add Team section with member names
 - [ ] Tag: `git tag w6-sidechallenge-v1 && git push --tags`
-- [ ] Post link in Slack `#w6-sidechallenge` thread:
-      `G<N> — <repo-url> — implemented: list, cost, terminate (21/25 tests passing)`
-
-Reminder: **OPTIONAL and does NOT count toward W6 score.** Recognition is
-separate (Slack callout / Phase 2 selection / portfolio).
+- [x] Post link in Slack `#w6-sidechallenge` thread:
+      `G1 — https://github.com/zacknguyn/g1-costctl — implemented: list, cost, terminate, tag, clean (25/25 tests passing)`
 
 ---
 
@@ -299,11 +296,7 @@ MIT — see `LICENSE`.
 
 ## Team
 
-> Replace before submission:
-
-- <name 1>
-- <name 2>
-- <name 3>
+- XB-DN26-046
 
 ---
 
