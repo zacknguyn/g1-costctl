@@ -52,9 +52,11 @@ The first time you run this, double-check against the AWS Console
 (Cost Management → Cost Explorer → filter by same tag + same range).
 Output should match within a few cents.
 """
-import boto3
+
 from collections import defaultdict
 from datetime import date, timedelta
+
+import boto3
 
 from commands._common import parse_kv
 
@@ -66,4 +68,48 @@ def run(args):
         args.tag   — "key=value" string (REQUIRED)
         args.days  — int, default 7
     """
-    raise NotImplementedError("TODO: implement cost — see module docstring")
+    ce = boto3.client("ce")
+    k, v = parse_kv(args.tag)
+
+    # 1. Date Range
+    end = date.today()
+    start = end - timedelta(days=args.days)
+    end_str, start_str = end.isoformat(), start.isoformat()
+
+    # 2. API Call
+    try:
+        resp = ce.get_cost_and_usage(
+            TimePeriod={"Start": start_str, "End": end_str},
+            Granularity="DAILY",
+            Metrics=["UnblendedCost"],
+            Filter={"Tags": {"Key": k, "Values": [v]}},
+            GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}],
+        )
+    except Exception as e:
+        print(f"AWS error: {e}")
+        return
+
+    # 3. Aggregate
+    services = defaultdict(float)
+    total = 0.0
+    unit = "USD"
+
+    for day in resp.get("ResultsByTime", []):
+        for group in day.get("Groups", []):
+            svc_name = group["Keys"][0]
+            amt = float(group["Metrics"]["UnblendedCost"]["Amount"])
+            unit = group["Metrics"]["UnblendedCost"]["Unit"]
+            services[svc_name] += amt
+            total += amt
+
+    # 4. Print Table
+    print(f"Cost for {args.tag} over last {args.days} days ({start_str} → {end_str}):")
+    print("-" * 30)
+
+    # Sort by cost descending
+    sorted_svcs = sorted(services.items(), key=lambda x: x[1], reverse=True)
+    for svc, amt in sorted_svcs:
+        print(f"  {svc:<45} $ {amt:>8.2f}")
+
+    print("-" * 30)
+    print(f"  TOTAL:     $ {total:>8.2f} {unit}")
